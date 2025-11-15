@@ -29,6 +29,7 @@ const getProjects = async (req, res) => {
 // @route   POST /api/projects
 // @access  Private
 const createProject = async (req, res) => {
+  console.log("dddddddddddd")
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -40,6 +41,8 @@ const createProject = async (req, res) => {
     }
 
     const { title, description, color } = req.body;
+
+    console.log(req.body)
 
     const project = await Project.create({
       title,

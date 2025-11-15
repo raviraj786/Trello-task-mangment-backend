@@ -1,3 +1,4 @@
+// routes/tasks.js
 const express = require('express');
 const { body } = require('express-validator');
 const {
@@ -12,29 +13,30 @@ const { auth, isProjectMember } = require('../middleware/auth');
 
 const router = express.Router({ mergeParams: true });
 
-// Validation rules
+// Task validation
 const taskValidation = [
   body('title').notEmpty().withMessage('Task title is required')
 ];
 
-// Apply auth middleware to all routes
+// All routes protected
 router.use(auth);
 
-// Routes for tasks
-// Note: do NOT use router.use('/:projectId/tasks', isProjectMember)
-// Instead, apply middleware per route using .all() or as last argument
-
+// Tasks for a project
 router.route('/:projectId/tasks')
-  .all(isProjectMember) // middleware applied to all methods on this route
+  .all(isProjectMember) // Check if user is member
   .get(getTasks)
   .post(taskValidation, createTask);
 
+// Single task operations
 router.route('/:projectId/tasks/:taskId')
   .all(isProjectMember)
   .put(taskValidation, updateTask)
   .delete(deleteTask);
 
+// Update task position (drag & drop)
 router.put('/:projectId/tasks/:taskId/position', isProjectMember, updateTaskPosition);
+
+// Add comment to task
 router.post('/:projectId/tasks/:taskId/comments', isProjectMember, addComment);
 
 module.exports = router;

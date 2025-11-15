@@ -1,34 +1,54 @@
+// middleware/auth.js
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const Project = require('../models/Project');
 
+
+
 const auth = async (req, res, next) => {
+  const token = req.header("Authorization");
+  if (!token) {
+    return res.status(401).json({ message: "No token, authorization denied" });
+  }
   try {
-    const token = req.header('Authorization')?.replace('Bearer ', '');
-    if (!token) return res.status(401).json({ message: 'No token' });
-
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    const user = await User.findById(decoded.id).select('-password');
-    if (!user) return res.status(401).json({ message: 'User not found' });
-
-    req.user = user;
+    const decoded = jwt.verify(token.replace("Bearer ", ""), process.env.JWT_SECRET);
+    const user = await User.findById(decoded.id); 
+    if (!user) return res.status(401).json({ message: "Invalid Token" });
+    
+    req.user = user; 
     next();
-  } catch (err) {
-    res.status(401).json({ message: 'Token invalid' });
+  } catch (error) {
+    console.error('Auth middleware error:', error);
+    return res.status(403).json({ message: "Invalid or expired token" });
   }
 };
 
+
+
+
+
+
+
 const isProjectMember = async (req, res, next) => {
-  const { projectId } = req.params;
-  const userId = req.user._id;
+  try {
+    if (!req.user) return res.status(401).json({ success: false, message: 'Unauthorized' });
 
-  const project = await Project.findById(projectId);
-  if (!project) return res.status(404).json({ message: 'Project not found' });
+    const projectId = req.params.projectId || req.params.id || req.params.project_id;
+    if (!projectId) return res.status(400).json({ success: false, message: 'Project id missing' });
 
-  const isMember = project.members.includes(userId);
-  if (!isMember) return res.status(403).json({ message: 'Not a project member' });
+    const project = await Project.findById(projectId);
+    if (!project) return res.status(404).json({ success: false, message: 'Project not found' });
 
-  next();
+    const userIdStr = String(req.user._id);
+    const isMember = Array.isArray(project.members) && project.members.some(m => String(m) === userIdStr);
+
+    if (!isMember) return res.status(403).json({ success: false, message: 'Not a project member' });
+
+    next();
+  } catch (err) {
+    console.error('isProjectMember error:', err);
+    return res.status(500).json({ success: false, message: 'Server error checking project membership' });
+  }
 };
 
-module.exports = { auth, isProjectMember }; // ✅ must be object with function properties
+module.exports = { auth, isProjectMember };

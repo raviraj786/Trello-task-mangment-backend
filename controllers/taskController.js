@@ -1,10 +1,8 @@
+// controllers/taskController.js
 const Task = require('../models/Task');
-const Project = require('../models/Project');
 const { validationResult } = require('express-validator');
 
-// @desc    Get all tasks for a project
-// @route   GET /api/projects/:projectId/tasks
-// @access  Private
+// GET all tasks for a project
 const getTasks = async (req, res) => {
   try {
     const tasks = await Task.find({ project: req.params.projectId })
@@ -12,43 +10,27 @@ const getTasks = async (req, res) => {
       .populate('comments.user', 'name email avatar')
       .sort({ position: 1, createdAt: -1 });
 
-    // Group tasks by status for Kanban board
     const groupedTasks = {
       todo: tasks.filter(task => task.status === 'todo'),
       inprogress: tasks.filter(task => task.status === 'inprogress'),
       done: tasks.filter(task => task.status === 'done')
     };
 
-    res.json({
-      success: true,
-      data: groupedTasks
-    });
+    res.json({ success: true, data: groupedTasks });
   } catch (error) {
     console.error('Get tasks error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error fetching tasks'
-    });
+    res.status(500).json({ success: false, message: 'Error fetching tasks' });
   }
 };
 
-// @desc    Create task
-// @route   POST /api/projects/:projectId/tasks
-// @access  Private
+// CREATE a new task
 const createTask = async (req, res) => {
   try {
     const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({
-        success: false,
-        message: 'Validation failed',
-        errors: errors.array()
-      });
-    }
+    if (!errors.isEmpty()) return res.status(400).json({ success: false, errors: errors.array() });
 
     const { title, description, assignee, dueDate, status } = req.body;
 
-    // Get highest position for the status
     const highestPositionTask = await Task.findOne({ 
       project: req.params.projectId, 
       status: status || 'todo' 
@@ -56,176 +38,104 @@ const createTask = async (req, res) => {
 
     const position = highestPositionTask ? highestPositionTask.position + 1 : 0;
 
-    const task = await Task.create({
+    const taskData = {
       title,
       description,
       project: req.params.projectId,
-      assignee,
       dueDate,
       status: status || 'todo',
       position
-    });
+    };
 
+    // Only assign if valid
+    if (assignee && assignee.trim() !== '') taskData.assignee = assignee;
+
+    const task = await Task.create(taskData);
     await task.populate('assignee', 'name email avatar');
 
-    res.status(201).json({
-      success: true,
-      data: task
-    });
+    res.status(201).json({ success: true, data: task });
   } catch (error) {
     console.error('Create task error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error creating task'
-    });
+    res.status(500).json({ success: false, message: 'Error creating task' });
   }
 };
 
-// @desc    Update task
-// @route   PUT /api/projects/:projectId/tasks/:taskId
-// @access  Private
+// UPDATE a task
 const updateTask = async (req, res) => {
   try {
     const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({
-        success: false,
-        message: 'Validation failed',
-        errors: errors.array()
-      });
-    }
+    if (!errors.isEmpty()) return res.status(400).json({ success: false, errors: errors.array() });
 
     const task = await Task.findById(req.params.taskId);
-    
-    if (!task) {
-      return res.status(404).json({
-        success: false,
-        message: 'Task not found'
-      });
+    if (!task) return res.status(404).json({ success: false, message: 'Task not found' });
+
+    const updateData = { ...req.body };
+
+    // Only update assignee if valid
+    if (updateData.assignee && updateData.assignee.trim() === '') {
+      delete updateData.assignee;
     }
 
-    const updatedTask = await Task.findByIdAndUpdate(
-      req.params.taskId,
-      req.body,
-      { new: true, runValidators: true }
-    ).populate('assignee', 'name email avatar')
-     .populate('comments.user', 'name email avatar');
+    const updatedTask = await Task.findByIdAndUpdate(req.params.taskId, updateData, { new: true, runValidators: true })
+      .populate('assignee', 'name email avatar')
+      .populate('comments.user', 'name email avatar');
 
-    res.json({
-      success: true,
-      data: updatedTask
-    });
+    res.json({ success: true, data: updatedTask });
   } catch (error) {
     console.error('Update task error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error updating task'
-    });
+    res.status(500).json({ success: false, message: 'Error updating task' });
   }
 };
 
-// @desc    Delete task
-// @route   DELETE /api/projects/:projectId/tasks/:taskId
-// @access  Private
+// DELETE a task
 const deleteTask = async (req, res) => {
   try {
     const task = await Task.findById(req.params.taskId);
-    
-    if (!task) {
-      return res.status(404).json({
-        success: false,
-        message: 'Task not found'
-      });
-    }
+    if (!task) return res.status(404).json({ success: false, message: 'Task not found' });
 
     await Task.findByIdAndDelete(req.params.taskId);
-
-    res.json({
-      success: true,
-      message: 'Task deleted successfully'
-    });
+    res.json({ success: true, message: 'Task deleted successfully' });
   } catch (error) {
     console.error('Delete task error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error deleting task'
-    });
+    res.status(500).json({ success: false, message: 'Error deleting task' });
   }
 };
 
-// @desc    Update task position (drag and drop)
-// @route   PUT /api/projects/:projectId/tasks/:taskId/position
-// @access  Private
+// UPDATE task position
 const updateTaskPosition = async (req, res) => {
   try {
     const { status, position } = req.body;
-    
     const task = await Task.findById(req.params.taskId);
-    if (!task) {
-      return res.status(404).json({
-        success: false,
-        message: 'Task not found'
-      });
-    }
+    if (!task) return res.status(404).json({ success: false, message: 'Task not found' });
 
-    // Update task status and position
     task.status = status;
     task.position = position;
     await task.save();
 
-    res.json({
-      success: true,
-      data: task
-    });
+    res.json({ success: true, data: task });
   } catch (error) {
     console.error('Update task position error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error updating task position'
-    });
+    res.status(500).json({ success: false, message: 'Error updating task position' });
   }
 };
 
-// @desc    Add comment to task
-// @route   POST /api/projects/:projectId/tasks/:taskId/comments
-// @access  Private
+// ADD comment to task
 const addComment = async (req, res) => {
   try {
     const { text } = req.body;
-    
-    if (!text || text.trim() === '') {
-      return res.status(400).json({
-        success: false,
-        message: 'Comment text is required'
-      });
-    }
+    if (!text || text.trim() === '') return res.status(400).json({ success: false, message: 'Comment text is required' });
 
     const task = await Task.findById(req.params.taskId);
-    if (!task) {
-      return res.status(404).json({
-        success: false,
-        message: 'Task not found'
-      });
-    }
+    if (!task) return res.status(404).json({ success: false, message: 'Task not found' });
 
-    task.comments.push({
-      user: req.user._id,
-      text: text.trim()
-    });
-
+    task.comments.push({ user: req.user._id, text: text.trim() });
     await task.save();
     await task.populate('comments.user', 'name email avatar');
 
-    res.json({
-      success: true,
-      data: task.comments
-    });
+    res.json({ success: true, data: task.comments });
   } catch (error) {
     console.error('Add comment error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error adding comment'
-    });
+    res.status(500).json({ success: false, message: 'Error adding comment' });
   }
 };
 
