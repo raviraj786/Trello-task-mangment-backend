@@ -2,7 +2,7 @@
 const Task = require('../models/Task');
 const { validationResult } = require('express-validator');
 
-// GET all tasks for a project
+// GET all tasks for a project (grouped by status)
 const getTasks = async (req, res) => {
   try {
     const tasks = await Task.find({ project: req.params.projectId })
@@ -76,7 +76,11 @@ const updateTask = async (req, res) => {
       delete updateData.assignee;
     }
 
-    const updatedTask = await Task.findByIdAndUpdate(req.params.taskId, updateData, { new: true, runValidators: true })
+    const updatedTask = await Task.findByIdAndUpdate(
+      req.params.taskId, 
+      updateData, 
+      { new: true, runValidators: true }
+    )
       .populate('assignee', 'name email avatar')
       .populate('comments.user', 'name email avatar');
 
@@ -101,16 +105,22 @@ const deleteTask = async (req, res) => {
   }
 };
 
-// UPDATE task position
+// UPDATE task position (drag & drop)
 const updateTaskPosition = async (req, res) => {
   try {
     const { status, position } = req.body;
+    if (!status || position === undefined) {
+      return res.status(400).json({ success: false, message: 'Status and position are required' });
+    }
+
     const task = await Task.findById(req.params.taskId);
     if (!task) return res.status(404).json({ success: false, message: 'Task not found' });
 
     task.status = status;
     task.position = position;
     await task.save();
+
+    await task.populate('assignee', 'name email avatar');
 
     res.json({ success: true, data: task });
   } catch (error) {
@@ -123,7 +133,9 @@ const updateTaskPosition = async (req, res) => {
 const addComment = async (req, res) => {
   try {
     const { text } = req.body;
-    if (!text || text.trim() === '') return res.status(400).json({ success: false, message: 'Comment text is required' });
+    if (!text || text.trim() === '') {
+      return res.status(400).json({ success: false, message: 'Comment text is required' });
+    }
 
     const task = await Task.findById(req.params.taskId);
     if (!task) return res.status(404).json({ success: false, message: 'Task not found' });
@@ -139,11 +151,56 @@ const addComment = async (req, res) => {
   }
 };
 
+// BULK SYNC: Replace all tasks (for offline sync)
+const bulkUpdateTasks = async (req, res) => {
+  const { tasks } = req.body;
+  const projectId = req.params.projectId;
+
+  if (!Array.isArray(tasks)) {
+    return res.status(400).json({ success: false, message: "Tasks must be an array" });
+  }
+
+  try {
+    // Delete all existing tasks
+    await Task.deleteMany({ project: projectId });
+
+    // Prepare tasks with correct position & status
+    const tasksToInsert = tasks.map((task, index) => ({
+      ...task,
+      project: projectId,
+      position: task.position ?? index,
+      status: task.status || 'todo',
+      _id: task._id && !task._id.startsWith('local_') ? task._id : undefined,
+      assignee: task.assignee?._id || task.assignee || undefined,
+    }));
+
+    const inserted = await Task.insertMany(tasksToInsert);
+
+    // Populate and group response
+    const populated = await Task.find({ _id: { $in: inserted.map(t => t._id) } })
+      .populate('assignee', 'name email avatar')
+      .populate('comments.user', 'name email avatar')
+      .sort({ position: 1 });
+
+    const grouped = {
+      todo: populated.filter(t => t.status === 'todo'),
+      inprogress: populated.filter(t => t.status === 'inprogress'),
+      done: populated.filter(t => t.status === 'done'),
+    };
+
+    res.json({ success: true, data: grouped });
+  } catch (error) {
+    console.error('Bulk update error:', error);
+    res.status(500).json({ success: false, message: 'Bulk sync failed' });
+  }
+};
+
 module.exports = {
   getTasks,
   createTask,
   updateTask,
   deleteTask,
   updateTaskPosition,
-  addComment
+  addComment,
+  bulkUpdateTasks
 };

@@ -1,30 +1,19 @@
 const mongoose = require('mongoose');
 
 const taskSchema = new mongoose.Schema({
-  title: {
-    type: String,
-    required: [true, 'Task title is required'],
-    trim: true
-  },
-  description: {
-    type: String,
-    trim: true
-  },
+  title: String,
+  description: String,
   project: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'Project',
-    required: true
+    ref: 'Project'
   },
   assignee: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User'
   },
-  dueDate: {
-    type: Date
-  },
+  dueDate: Date,
   status: {
     type: String,
-    enum: ['todo', 'inprogress', 'done'],
     default: 'todo'
   },
   position: {
@@ -42,13 +31,9 @@ const taskSchema = new mongoose.Schema({
   comments: [{
     user: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: 'User',
-      required: true
+      ref: 'User'
     },
-    text: {
-      type: String,
-      required: true
-    },
+    text: String,
     createdAt: {
       type: Date,
       default: Date.now
@@ -57,8 +42,5 @@ const taskSchema = new mongoose.Schema({
 }, {
   timestamps: true
 });
-
-// Create index for better query performance
-taskSchema.index({ project: 1, status: 1, position: 1 });
 
 module.exports = mongoose.model('Task', taskSchema);

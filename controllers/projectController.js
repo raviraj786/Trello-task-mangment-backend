@@ -162,17 +162,18 @@ const deleteProject = async (req, res) => {
 // @route   POST /api/projects/:id/members
 // @access  Private
 const addMember = async (req, res) => {
+  console.log("Ddddddddd")
   try {
     const { userId } = req.body;
+    console.log(userId)
     const project = await Project.findById(req.params.id);
-
+    console.log(project)
     if (!project) {
       return res.status(404).json({
         success: false,
         message: 'Project not found'
       });
     }
-
     // Check if user is project member
     if (!project.members.includes(req.user._id)) {
       return res.status(403).json({
@@ -180,7 +181,6 @@ const addMember = async (req, res) => {
         message: 'Access denied'
       });
     }
-
     if (project.members.includes(userId)) {
       return res.status(400).json({
         success: false,
